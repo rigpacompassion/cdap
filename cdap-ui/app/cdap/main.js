@@ -14,8 +14,6 @@
  * the License.
  */
 
-// require('./services/i18n');
-// import Test from './services/i18n';
 import React, {Component, PropTypes} from 'react';
 import ReactDOM from 'react-dom';
 
@@ -41,6 +39,7 @@ import Match from 'react-router/Match';
 import Miss from 'react-router/Miss';
 import Store from './services/store/store';
 import CaskVideoModal from './components/CaskVideoModal';
+import Helmet from 'react-helmet';
 
 class CDAP extends Component {
   constructor(props) {
@@ -168,23 +167,27 @@ class CDAP extends Component {
     }
 
     return (
-      <Router basename="/cask-cdap">
+      <Router basename="/cask-cdap" history={history}>
         <div className="cdap-container">
-          <CdapHeader pathname={location.pathname} />
-          <SplashScreen openVideo={this.openCaskVideo}/>
-          <div className="container-fluid">
-            {this.props.children}
-          </div>
-          <CaskVideoModal isOpen={this.state.videoOpen} onCloseHandler={this.closeCaskVideo}/>
-          <Footer version={this.version} />
-          <Match exactly pattern="/" render={() => (<Redirect to={`/ns/${this.state.selectedNamespace}`} />)} />
-          <Match exactly pattern="/notfound" component={Missed} />
-          <Match exactly pattern="/management" component={Management} />
-          <Match exactly pattern="/ns/:namespace" component={Home} />
-          <Match exactly pattern="/ns/:namespace/dashboard" component={Dashboard} />
-          <Match pattern="/Experimental" component={Experimental} />
-          <Match pattern="/socket-example" component={ConnectionExample} />
-          <Miss component={Missed} />
+          <Helmet
+            title="CDAP"
+          />
+            <CdapHeader pathname={location.pathname} />
+            <SplashScreen openVideo={this.openCaskVideo}/>
+            <div className="container-fluid">
+              {this.props.children}
+            </div>
+            <CaskVideoModal isOpen={this.state.videoOpen} onCloseHandler={this.closeCaskVideo}/>
+            <Footer version={this.version} />
+            <Match exactly pattern="/" render={() => (<Redirect to={`/ns/${this.state.selectedNamespace}`} />)} />
+            <Match exactly pattern="/notfound" component={Missed} />
+            <Match exactly pattern="/management" component={Management} />
+            <Match exactly pattern="/ns/:namespace" history={history} component={Home} />
+            <Match exactly pattern="/ns/:namespace/dashboard" component={Dashboard} />
+            <Match pattern="/Experimental" component={Experimental} />
+            <Match pattern="/socket-example" component={ConnectionExample} />
+            <Miss component={Missed} />
+
         </div>
       </Router>
     );
