@@ -169,9 +169,7 @@ class Home extends Component {
 
   search(query = this.state.query, filter = this.state.filter, sortObj = this.state.sortObj) {
 
-    this.setState({
-      loading: true
-    });
+    this.setState({loading: true});
 
     if (filter.length === 0) {
       this.setState({query, filter, sortObj, entities: [], selectedEntity: null, loading: false});
@@ -225,9 +223,9 @@ class Home extends Component {
   }
 
   isDefaultFilter(){
-      return (this.state.filter.length === defaultFilter.length) && this.state.filter.every((element, index) => {
-        return element === defaultFilter[index];
-      });
+    return (this.state.filter.length === defaultFilter.length) && this.state.filter.every((element, index) => {
+      return element === defaultFilter[index];
+    });
   }
 
   isDefaultSort(){
