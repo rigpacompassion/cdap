@@ -184,6 +184,9 @@ class Home extends Component {
     let urlSort;
     let urlSearch;
 
+    console.log(location);
+    console.log(location.query);
+
     if(typeof filterSortObj.filter !== 'undefined' && filterSortObj.filter.length === 0){
       urlFilters = this.state.filter;
     } else {
@@ -303,7 +306,7 @@ class Home extends Component {
       url: location.pathname + sortAndFilterParams
     };
 
-    history.pushState(obj, obj.Title, obj.url);
+    history.pushState(obj, obj.title, obj.url);
   }
 
   render() {
