@@ -495,34 +495,51 @@ final class MapReduceRuntimeService extends AbstractExecutionThreadService {
    */
   @SuppressWarnings("unchecked")
   private void beforeSubmit(final Job job) throws TransactionFailureException {
+    final boolean isTxnl = !(mapReduce instanceof ProgramLifecycle)
+      || Transactions.isTransactional(mapReduce, "initialize", MapReduceContext.class);
+    if (!isTxnl) {
+      ClassLoader oldClassLoader = ClassLoaders.setContextClassLoader(job.getConfiguration().getClassLoader());
+      try {
+        doInitialize();
+      } catch (Exception e) {
+        throw Throwables.propagate(e);
+      } finally {
+        ClassLoaders.setContextClassLoader(oldClassLoader);
+      }
+    }
     TransactionContext txContext = context.getTransactionContext();
     Transactions.execute(txContext, "initialize", new Callable<Void>() {
       @Override
       public Void call() throws Exception {
         ClassLoader oldClassLoader = ClassLoaders.setContextClassLoader(job.getConfiguration().getClassLoader());
         try {
-          context.setState(new ProgramState(ProgramStatus.INITIALIZING, null));
-          if (mapReduce instanceof ProgramLifecycle) {
-            ((ProgramLifecycle) mapReduce).initialize(context);
-          } else {
-            mapReduce.beforeSubmit(context);
+          if (isTxnl) {
+            doInitialize();
           }
-          // once the initialize method is executed, set the status of the MapReduce to RUNNING
-          context.setState(new ProgramState(ProgramStatus.RUNNING, null));
-
           // set input/outputs info, and get one of the configured mapper's TypeToken
           TypeToken<?> mapperTypeToken = setInputsIfNeeded(job);
           setOutputsIfNeeded(job);
 
           setOutputClassesIfNeeded(job, mapperTypeToken);
           setMapOutputClassesIfNeeded(job, mapperTypeToken);
-
           return null;
         } finally {
           ClassLoaders.setContextClassLoader(oldClassLoader);
         }
       }
     });
+  }
+
+  private void doInitialize() throws Exception {
+    context.setState(new ProgramState(ProgramStatus.INITIALIZING, null));
+    if (mapReduce instanceof ProgramLifecycle) {
+      //noinspection unchecked
+      ((ProgramLifecycle) mapReduce).initialize(context);
+    } else {
+      mapReduce.beforeSubmit(context);
+    }
+    // once the initialize method is executed, set the status of the MapReduce to RUNNING
+    context.setState(new ProgramState(ProgramStatus.RUNNING, null));
   }
 
   /**
@@ -566,11 +583,13 @@ final class MapReduceRuntimeService extends AbstractExecutionThreadService {
    * Calls the destroy method of {@link ProgramLifecycle}.
    */
   private void destroy(final boolean succeeded, final String failureInfo, final ClassLoader mapReduceClassLoader) {
+    final boolean isTxnl = !(mapReduce instanceof ProgramLifecycle)
+      || Transactions.isTransactional(mapReduce, "initialize", MapReduceContext.class);
     try {
       TransactionContext txContext = context.getTransactionContext();
-      Transactions.execute(txContext, "destroy", new Callable<Void>() {
+      boolean success = Transactions.execute(txContext, "destroy", new Callable<Boolean>() {
         @Override
-        public Void call() throws Exception {
+        public Boolean call() throws Exception {
           ClassLoader oldClassLoader = ClassLoaders.setContextClassLoader(mapReduceClassLoader);
           try {
             // TODO (CDAP-1952): this should be done in the output committer, to make the M/R fail if addPartition fails
@@ -582,17 +601,25 @@ final class MapReduceRuntimeService extends AbstractExecutionThreadService {
               }
             }
             context.setState(getProgramState(success, failureInfo));
-            if (mapReduce instanceof ProgramLifecycle) {
-              ((ProgramLifecycle) mapReduce).destroy();
-            } else {
-              mapReduce.onFinish(success, context);
+            if (isTxnl) {
+              doDestroy(success);
             }
-            return null;
+            return success;
           } finally {
             ClassLoaders.setContextClassLoader(oldClassLoader);
           }
         }
       });
+      if (!isTxnl) {
+        ClassLoader oldClassLoader = ClassLoaders.setContextClassLoader(job.getConfiguration().getClassLoader());
+        try {
+          doDestroy(success);
+        } catch (Exception e) {
+          throw Throwables.propagate(e);
+        } finally {
+          ClassLoaders.setContextClassLoader(oldClassLoader);
+        }
+      }
     } catch (Throwable e) {
       if (e instanceof TransactionFailureException && e.getCause() != null
         && !(e instanceof TransactionConflictException)) {
@@ -601,6 +628,15 @@ final class MapReduceRuntimeService extends AbstractExecutionThreadService {
       LOG.warn("Error executing the destroy method of the MapReduce program {}", context.getProgram().getName(), e);
     }
   }
+
+  private void doDestroy(boolean success) throws Exception {
+    if (mapReduce instanceof ProgramLifecycle) {
+      ((ProgramLifecycle) mapReduce).destroy();
+    } else {
+      mapReduce.onFinish(success, context);
+    }
+  }
+
 
   private void assertConsistentTypes(Class<? extends Mapper> firstMapperClass,
                                      Map.Entry<Class, Class> firstMapperClassOutputTypes,
